@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title>Some Horror JS Horror Game</title>
+	
+	<link href="normalize.css" rel="stylesheet">
+	<link href="styles.css" rel="stylesheet">
+</head>
+
+<body>
+	<canvas id="game-canvas"></canvas>
+	
+	<!-- load scripts -->
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.js"></script>
+	<script src="lib/weml.min.js"></script>
+	<script src="lib/nebgl.js"></script>
+	<script src="lib/webgl-dynamicdraw.js"></script>
+	<script src="pixelhorror.js"></script>
+	
+	<!-- shaders -->
+	<script id="shader-scene-vert" type="shader/glsl-vert">
+		uniform mat4 uMatMVP;
+		
+		attribute vec4 inVertex;
+		
+		void main() {
+			gl_Position = uMatMVP * inVertex;
+		}
+	</script>
+	<script id="shader-scene-frag" type="shader/glsl-frag">
+		void main() {
+			gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+		}
+	</script>
+</body>
+</html>

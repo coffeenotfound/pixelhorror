@@ -21,19 +21,190 @@
 	<script src="lib/keyinput.js"></script>
 	<script src="pixelhorror.js"></script>
 	
-	<!-- shaders -->
+	<!-- scene shader -->
 	<script id="shader-scene-vert" type="shader/glsl-vert">
+		precision mediump float;
+		
+		uniform mat4 uMatMV;
 		uniform mat4 uMatMVP;
 		
 		attribute vec4 inVertex;
+		attribute vec3 inNormal;
+		attribute vec3 inTexCoord;
+		
+		varying vec2 vTexCoord;
+		varying vec4 vVertexScreen;
 		
 		void main() {
+			vTexCoord = inTexCoord.st;
+			
+			vVertexScreen = uMatMV * inVertex;
 			gl_Position = uMatMVP * inVertex;
 		}
 	</script>
 	<script id="shader-scene-frag" type="shader/glsl-frag">
+		precision mediump float;
+		
+		uniform sampler2D uTex0;
+		
+		varying vec2 vTexCoord;
+		varying vec4 vVertexScreen;
+		
+		float lum(vec3 rgb) {
+			const vec3 W = vec3(0.2125, 0.7154, 0.0721);
+			return dot(rgb, W);
+		}
+		
+		float ditherBW(vec2 uv, float lum) {
+			int xx = int(mod(uv.x, 4.0));
+			int yy = int(mod(uv.y, 4.0));
+			int index = yy*4 + xx;
+			float threshold = 1.0;
+			if (index == 0) threshold = 0.0625;
+			if (index == 1) threshold = 0.5625;
+			if (index == 2) threshold = 0.1875;
+			if (index == 3) threshold = 0.6875;
+			if (index == 4) threshold = 0.8125;
+			if (index == 5) threshold = 0.3125;
+			if (index == 6) threshold = 0.9375;
+			if (index == 7) threshold = 0.4375;
+			if (index == 8) threshold = 0.25;
+			if (index == 9) threshold = 0.75;
+			if (index == 10) threshold = 0.125;
+			if (index == 11) threshold = 0.625;
+			if (index == 12) threshold = 1.0;
+			if (index == 13) threshold = 0.5;
+			if (index == 14) threshold = 0.875;
+			if (index == 15) threshold = 0.375;
+			return step(threshold, lum);
+		}
+		
+		vec3 ditherColor(vec2 uv, vec3 color, float shades) {
+			return floor((color * shades) + ditherBW(uv, lum(color))) / shades;
+		}
+		
 		void main() {
-			gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+			vec4 frag = texture2D(uTex0, vTexCoord.st);
+			
+			// ambient light
+			vec3 fragLight;
+			fragLight.rgb = vec3(0.025, 0.025, 0.025);
+			
+			// DEBUG: player light
+			float lightDist = length(vVertexScreen.xyz);
+			float lightAmount = 1.0 - pow(min(6.0, lightDist) / 6.0, 0.5);
+			fragLight += vec3(0.5, 0.5, 0.5) * lightAmount;
+			
+			// multiply light
+			frag.rgb = frag.rgb * fragLight.rgb;
+			
+			// dithered fog
+			float fogDist = length(vVertexScreen.xyz);
+			float interpFogFactor = clamp(pow(smoothstep(14.0, 6.0, fogDist), 2.0), 0.0, 1.0);
+			//frag.rgb *= ditherBW(gl_FragCoord.xy, interpFogFactor);
+			frag.rgb *= interpFogFactor;
+			
+			// dither color
+			//frag.rgb = ditherColor(gl_FragCoord.xy, frag.rgb, 128.0);
+			
+			// write frag
+			gl_FragColor = frag;
+		}
+	</script>
+	
+	<!-- post shader -->
+	<script id="shader-post-vert" type="shader/glsl-vert">
+		precision mediump float;
+		
+		attribute vec2 inVertex;
+		
+		varying vec2 vTexCoord;
+		
+		void main() {
+			vTexCoord = inVertex.xy;
+			gl_Position = vec4(1.0-(inVertex.x*2.0), -1.0+(inVertex.y*2.0), 0.0, 1.0);
+		}
+	</script>
+	<script id="shader-post-frag" type="shader/glsl-frag">
+		precision mediump float;
+		
+		uniform sampler2D uTexFBOColor;
+		uniform vec3 uResolution;
+		
+		varying vec2 vTexCoord;
+		
+		float lum(vec3 rgb) {
+			const vec3 W = vec3(0.2125, 0.7154, 0.0721);
+			return dot(rgb, W);
+		}
+		
+		vec3 desaturate(vec3 color, float fac) {
+			const vec3 W = vec3(0.2125, 0.7154, 0.0721);
+			return mix(vec3(dot(color, W)), color, fac);
+		}
+		
+		void main() {
+			vec4 frag = texture2D(uTexFBOColor, vTexCoord.st);
+			vec2 pixelatedTexCoord = floor(vTexCoord.st * uResolution.xy) / uResolution.xy;
+			
+			// vignette
+			vec4 vignetteColor = vec4(vec3(0.0), 0.5);
+			frag.rgb = mix(frag.rgb, vignetteColor.rgb, vignetteColor.a * pow(smoothstep(0.1, 1.3, length(pixelatedTexCoord.st * 2.0 - 1.0)), 8.0));
+			
+			// color grading
+			frag.rgb = desaturate(frag.rgb, clamp(0.0, 1.0, 0.1 + pow(lum(frag.rgb), 0.2)));
+			
+			gl_FragColor = frag;
+		}
+	</script>
+	
+	<!-- ui shader -->
+	<script id="shader-ui-vert" type="shader/glsl-vert">
+		precision mediump float;
+		
+		uniform mat4 uMatP;
+		uniform bool uBlit;
+		
+		attribute vec3 inVertex;
+		attribute vec3 inTexCoord;
+		
+		varying vec2 vTexCoord;
+		
+		void main() {
+			if(uBlit) {
+				vTexCoord = inVertex.st;
+				gl_Position = vec4(1.0-(inVertex.x*2.0), -1.0+(inVertex.y*2.0), 0.0, 1.0);
+			}
+			else {
+				vTexCoord = inTexCoord.st;
+				
+				gl_Position = uMatP * vec4(inVertex.xyz, 1.0);
+			}
+		}
+	</script>
+	<script id="shader-ui-frag" type="shader/glsl-frag">
+		precision mediump float;
+		
+		uniform sampler2D uTex0;
+		uniform vec3 uResolution;
+		uniform bool uBlit;
+		
+		varying vec2 vTexCoord;
+		
+		void main() {
+			if(uBlit) {
+				gl_FragColor = texture2D(uTex0, vTexCoord.st);
+			}
+			else {
+				vec4 frag = texture2D(uTex0, vTexCoord.st);
+				vec2 pixelatedTexCoord = floor(vTexCoord.st * uResolution.xy) / uResolution.xy;
+				
+				// vignette
+				vec4 vignetteColor = vec4(vec3(0.0), 0.5);
+				frag.xyz = mix(frag.xyz, vignetteColor.xyz, vignetteColor.a * pow(smoothstep(0.1, 1.3, length(pixelatedTexCoord.st * 2.0 - 1.0)), 8.0));
+				
+				gl_FragColor = frag;
+			}
 		}
 	</script>
 </body>

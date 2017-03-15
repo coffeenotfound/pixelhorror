@@ -91,8 +91,8 @@ HorrorGame.PlayerController.prototype = {
 	_headbobWalkCycleFac: 2.2,
 	_headbobDistance: 0.075,
 	
-	walkSpeedWalk: 0.02,
-	walkSpeedRun: 0.04,
+	walkSpeedWalk: 0.015,
+	walkSpeedRun: 0.025,
 	lookSensitivity: 0.002,
 	
 	_onGround: false,
